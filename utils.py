@@ -3,6 +3,11 @@ import numpy as np
 import re
 import io
 import csv
+import chardet
+from collections import Counter
+# For Excel file support
+import openpyxl
+import xlrd
 
 def is_header_row(row):
     """
@@ -502,18 +507,35 @@ def process_file(file_content, filename):
     Returns:
         pandas DataFrame: standardized dataframe
     """
-    # Detect encoding and delimiter
-    encoding, delimiter = detect_encoding_and_delimiter(file_content)
+    # Determine file type based on extension
+    file_extension = filename.lower().split('.')[-1]
     
-    # Read the file into a dataframe
-    try:
-        df = pd.read_csv(io.BytesIO(file_content), encoding=encoding, delimiter=delimiter, engine='python')
-    except:
-        # If first attempt fails, try with more flexible parsing
+    # Process Excel files
+    if file_extension in ['xlsx', 'xls']:
         try:
-            df = pd.read_csv(io.BytesIO(file_content), encoding=encoding, sep=None, engine='python')
+            # For Excel files, we don't need encoding detection
+            if file_extension == 'xlsx':
+                # .xlsx files use openpyxl engine
+                df = pd.read_excel(io.BytesIO(file_content), engine='openpyxl')
+            else:
+                # .xls files use xlrd engine
+                df = pd.read_excel(io.BytesIO(file_content), engine='xlrd')
         except Exception as e:
-            raise ValueError(f"Failed to parse file {filename}: {str(e)}")
+            raise ValueError(f"Failed to parse Excel file {filename}: {str(e)}")
+    else:
+        # Handle CSV files as before
+        # Detect encoding and delimiter
+        encoding, delimiter = detect_encoding_and_delimiter(file_content)
+        
+        # Read the file into a dataframe
+        try:
+            df = pd.read_csv(io.BytesIO(file_content), encoding=encoding, delimiter=delimiter, engine='python')
+        except:
+            # If first attempt fails, try with more flexible parsing
+            try:
+                df = pd.read_csv(io.BytesIO(file_content), encoding=encoding, sep=None, engine='python')
+            except Exception as e:
+                raise ValueError(f"Failed to parse CSV file {filename}: {str(e)}")
     
     # Handle empty dataframe
     if df.empty:

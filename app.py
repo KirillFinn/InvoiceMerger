@@ -22,10 +22,10 @@ into a single standardized output file. It automatically detects the relevant co
 - Price
 """)
 
-# File uploader for multiple CSV files
+# File uploader for multiple CSV and Excel files
 uploaded_files = st.file_uploader(
-    "Upload your CSV invoice files",
-    type=["csv"],
+    "Upload your invoice files (CSV, XLSX, XLS)",
+    type=["csv", "xlsx", "xls"],
     accept_multiple_files=True
 )
 
@@ -105,13 +105,13 @@ if uploaded_files:
             st.error(error)
 
 else:
-    st.info("Please upload one or more CSV invoice files to begin.")
+    st.info("Please upload one or more invoice files (CSV, XLSX, or XLS) to begin.")
 
 # Add some helpful information at the bottom
 st.markdown("---")
 st.markdown("""
 ### How it works
-1. Upload multiple CSV invoice files
+1. Upload multiple invoice files (CSV, XLSX, or XLS formats)
 2. The application automatically detects columns for:
    - EVSE ID (charging station identifier)
    - Session ID (transaction identifier)
