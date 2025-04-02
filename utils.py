@@ -54,64 +54,61 @@ def is_header_row(row):
     return header_keyword_ratio > 0.3 or non_numeric_ratio > 0.7
 
 
-def detect_full_company_name(df):
+def detect_evse_id(df):
     """
-    Detect the column containing the full company name.
+    Detect the column containing the EVSE ID.
     
     Args:
         df: pandas DataFrame
     
     Returns:
-        str: name of the column containing full company name
+        str: name of the column containing EVSE ID
     """
     # Check column names first
-    company_name_patterns = [
-        re.compile(r'company\s*(?:full)*\s*name', re.IGNORECASE),
-        re.compile(r'full\s*name', re.IGNORECASE),
-        re.compile(r'vendor\s*name', re.IGNORECASE),
-        re.compile(r'supplier\s*name', re.IGNORECASE),
-        re.compile(r'business\s*name', re.IGNORECASE),
-        re.compile(r'client\s*name', re.IGNORECASE),
-        re.compile(r'full\s*company', re.IGNORECASE),
-        re.compile(r'company', re.IGNORECASE)
+    evse_id_patterns = [
+        re.compile(r'evse[\s_-]*id', re.IGNORECASE),
+        re.compile(r'evse', re.IGNORECASE),
+        re.compile(r'charge[\s_-]*point[\s_-]*id', re.IGNORECASE),
+        re.compile(r'charging[\s_-]*station[\s_-]*id', re.IGNORECASE),
+        re.compile(r'station[\s_-]*id', re.IGNORECASE),
+        re.compile(r'charger[\s_-]*id', re.IGNORECASE),
+        re.compile(r'cp[\s_-]*id', re.IGNORECASE)  # CP often stands for Charge Point
     ]
     
     # Check column names
-    for pattern in company_name_patterns:
+    for pattern in evse_id_patterns:
         for col in df.columns:
             if pattern.search(str(col)):
                 return col
     
     # If column names don't match, check contents
-    # Look for columns that have string values with capital letters, spaces, and longer length
-    # Characteristic of company names
+    # EVSE IDs typically have a pattern: alphanumeric with possible separators
     string_columns = []
     
     for col in df.columns:
         sample = df[col].dropna().astype(str).head(10)
         
-        # Skip columns with numeric values
+        # Skip columns with purely numeric values
         if all(is_numeric(val) for val in sample):
             continue
             
-        # Look for values that look like company names
-        # - Contain multiple words
-        # - Contain both uppercase and lowercase letters
-        # - Longer average length
+        # Look for values that look like EVSE IDs
+        # - Often have a consistent format
+        # - May contain alphanumeric characters with separators
+        # - Usually not too long or too short
         
-        word_counts = sample.apply(lambda x: len(str(x).split()))
-        avg_words = word_counts.mean()
+        # Check for alphanumeric pattern with possible separators
+        has_alphanumeric = sample.apply(lambda x: bool(re.search(r'^[A-Za-z0-9\-_\.]+$', str(x)))).mean() > 0.5
         
-        # Has capitalization pattern typical of names
-        has_capitalization = sample.apply(lambda x: bool(re.search(r'[A-Z][a-z]', str(x)))).mean() > 0.5
-        
-        # Average string length
+        # Average string length - EVSE IDs usually have moderate length
         avg_length = sample.apply(len).mean()
+        length_score = 2 if 4 <= avg_length <= 20 else 0
         
-        # Check for presence of business identifiers
-        business_terms = sample.apply(lambda x: bool(re.search(r'\b(Inc|LLC|Ltd|GmbH|Corp|Company|Co)\b', str(x)))).mean() > 0.2
+        # Consistent length is a good indicator of IDs
+        std_length = sample.apply(len).std()
+        consistent_length = 2 if std_length < 2 else 0
         
-        score = (avg_words * 2) + (has_capitalization * 3) + (avg_length * 0.1) + (business_terms * 4)
+        score = (has_alphanumeric * 3) + length_score + consistent_length
         
         string_columns.append((col, score))
     
@@ -125,71 +122,64 @@ def detect_full_company_name(df):
     return None
 
 
-def detect_short_company_name(df, full_name_col=None):
+def detect_session_id(df, evse_id_col=None):
     """
-    Detect the column containing the short company name.
+    Detect the column containing the Session ID.
     
     Args:
         df: pandas DataFrame
-        full_name_col: column containing full company name
+        evse_id_col: column containing EVSE ID (to avoid selecting the same column)
     
     Returns:
-        str: name of the column containing short company name
+        str: name of the column containing Session ID
     """
     # Check column names first
-    short_name_patterns = [
-        re.compile(r'short\s*(?:company)*\s*name', re.IGNORECASE),
-        re.compile(r'company\s*short\s*name', re.IGNORECASE),
-        re.compile(r'abbrev', re.IGNORECASE),
-        re.compile(r'short', re.IGNORECASE),
-        re.compile(r'code', re.IGNORECASE),
-        re.compile(r'acronym', re.IGNORECASE)
+    session_id_patterns = [
+        re.compile(r'session[\s_-]*id', re.IGNORECASE),
+        re.compile(r'transaction[\s_-]*id', re.IGNORECASE),
+        re.compile(r'charge[\s_-]*session[\s_-]*id', re.IGNORECASE),
+        re.compile(r'charging[\s_-]*session', re.IGNORECASE),
+        re.compile(r'session[\s_-]*number', re.IGNORECASE)
     ]
     
     # Check column names
-    for pattern in short_name_patterns:
+    for pattern in session_id_patterns:
         for col in df.columns:
             if pattern.search(str(col)):
                 return col
     
-    # Look for columns with abbreviations/short text
-    # that are not the full name column
+    # Look for columns with values that look like session IDs
+    # that are not the EVSE ID column
     string_columns = []
     
     for col in df.columns:
-        if col == full_name_col:
+        if col == evse_id_col:
             continue
             
         sample = df[col].dropna().astype(str).head(10)
         
-        # Skip columns with numeric values
-        if all(is_numeric(val) for val in sample):
+        # Skip columns with purely numeric short values
+        if all(is_numeric(val) and len(str(val)) < 6 for val in sample):
             continue
             
-        # Characteristics of short names:
-        # - Short average length
-        # - Often uppercase
-        # - Few words
+        # Characteristics of session IDs based on user description:
+        # - Long strings with numbers and small letters
+        # - Often separated by hyphens
         
-        word_counts = sample.apply(lambda x: len(str(x).split()))
-        avg_words = word_counts.mean()
+        # Check for pattern matching session ID format (letters, numbers, hyphens)
+        has_session_format = sample.apply(lambda x: bool(re.search(r'[a-z0-9\-]+', str(x)))).mean() > 0.8
         
-        # Mainly uppercase or short codes
-        is_uppercase = sample.apply(lambda x: str(x).isupper()).mean() > 0.5
+        # Check specifically for hyphens which are common in session IDs
+        has_hyphens = sample.apply(lambda x: '-' in str(x)).mean() > 0.5
         
-        # Average string length
+        # Average string length - session IDs often longer than other IDs
         avg_length = sample.apply(len).mean()
+        length_score = 3 if avg_length > 10 else 0
         
-        # Short names would be shorter than full names
-        length_score = 10 / (avg_length + 1) if avg_length < 15 else 0
+        # Consistent formatting is a good indicator
+        consistent_format = sample.apply(lambda x: bool(re.match(r'^[a-z0-9\-]+$', str(x).lower()))).mean() > 0.7
         
-        # Adjust for uppercase text
-        uppercase_score = 2 if is_uppercase else 0
-        
-        # Ideally just 1-2 words
-        word_score = 3 if avg_words <= 2 else 0
-        
-        score = length_score + uppercase_score + word_score
+        score = (has_session_format * 2) + (has_hyphens * 3) + length_score + (consistent_format * 2)
         
         string_columns.append((col, score))
     
@@ -197,12 +187,8 @@ def detect_short_company_name(df, full_name_col=None):
     string_columns.sort(key=lambda x: x[1], reverse=True)
     
     # Return the highest scoring column or None if none found
-    if string_columns and string_columns[0][1] > 2:
+    if string_columns and string_columns[0][1] > 3:
         return string_columns[0][0]
-    
-    # If we have a full name but no good short name, create one
-    if full_name_col:
-        return None  # Will be handled in standardize_dataframe
     
     return None
 
@@ -374,19 +360,19 @@ def detect_columns(df):
         df: pandas DataFrame
     
     Returns:
-        dict: detected column names for full_name, short_name, currency, price
+        dict: detected column names for evse_id, session_id, currency, price
     """
     # Initialize with None values
     detected = {
-        'full_name': None,
-        'short_name': None,
+        'evse_id': None,
+        'session_id': None,
         'currency': None,
         'price': None
     }
     
     # Detect each column
-    detected['full_name'] = detect_full_company_name(df)
-    detected['short_name'] = detect_short_company_name(df, detected['full_name'])
+    detected['evse_id'] = detect_evse_id(df)
+    detected['session_id'] = detect_session_id(df, detected['evse_id'])
     detected['currency'] = detect_currency(df)
     detected['price'] = detect_price(df)
     
@@ -408,21 +394,16 @@ def standardize_dataframe(df, detected_columns):
     standardized_df = pd.DataFrame()
     
     # Map detected columns to standardized column names
-    if detected_columns['full_name']:
-        standardized_df['company_full_name'] = df[detected_columns['full_name']]
+    if detected_columns['evse_id']:
+        standardized_df['evse_id'] = df[detected_columns['evse_id']]
     else:
-        standardized_df['company_full_name'] = "Unknown"
+        standardized_df['evse_id'] = "Unknown"
     
-    # Handle short name - generate from full name if not detected
-    if detected_columns['short_name']:
-        standardized_df['company_short_name'] = df[detected_columns['short_name']]
-    elif detected_columns['full_name']:
-        # Generate short name from full name
-        standardized_df['company_short_name'] = standardized_df['company_full_name'].apply(
-            lambda x: generate_short_name(x) if pd.notna(x) else "Unknown"
-        )
+    # Session ID is the most important column according to the user
+    if detected_columns['session_id']:
+        standardized_df['session_id'] = df[detected_columns['session_id']]
     else:
-        standardized_df['company_short_name'] = "Unknown"
+        standardized_df['session_id'] = "Unknown"
     
     if detected_columns['currency']:
         standardized_df['currency'] = df[detected_columns['currency']]

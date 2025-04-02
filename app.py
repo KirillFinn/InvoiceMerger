@@ -15,8 +15,11 @@ st.set_page_config(
 st.title("Invoice File Combiner")
 st.markdown("""
 This application helps you combine multiple CSV invoice files with different column structures 
-into a single standardized output file. It automatically detects the relevant columns 
-(company full name, company short name, currency, and price) from each file.
+into a single standardized output file. It automatically detects the relevant columns:
+- EVSE ID (Electric Vehicle Supply Equipment identifier)
+- Session ID (the unique transaction identifier for charging sessions)
+- Currency
+- Price
 """)
 
 # File uploader for multiple CSV files
@@ -110,8 +113,8 @@ st.markdown("""
 ### How it works
 1. Upload multiple CSV invoice files
 2. The application automatically detects columns for:
-   - Company full name
-   - Company short name  
+   - EVSE ID (charging station identifier)
+   - Session ID (transaction identifier)
    - Currency
    - Price
 3. Header rows are automatically detected and skipped
