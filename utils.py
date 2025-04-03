@@ -258,6 +258,89 @@ def detect_currency(df):
     return None
 
 
+def detect_vat_rate_column(df):
+    """
+    Detect the column containing VAT rate information.
+    
+    Args:
+        df: pandas DataFrame
+    
+    Returns:
+        str: name of the column containing VAT rate or None if not found
+    """
+    # Check column names first
+    vat_patterns = [
+        re.compile(r'vat[\s_-]*rate', re.IGNORECASE),
+        re.compile(r'tax[\s_-]*rate', re.IGNORECASE),
+        re.compile(r'vat[\s_-]*%', re.IGNORECASE),
+        re.compile(r'tax[\s_-]*%', re.IGNORECASE),
+        re.compile(r'vat', re.IGNORECASE),
+        re.compile(r'tax', re.IGNORECASE)
+    ]
+    
+    # Check column names
+    for pattern in vat_patterns:
+        for col in df.columns:
+            if pattern.search(str(col)):
+                # Verify it contains numeric data
+                if is_numeric_column(df[col]):
+                    return col
+    
+    # Look for columns with consistent values that might be VAT rates
+    # VAT rate columns typically have the same value across most rows (e.g., 20%, 19%, 7%)
+    vat_candidates = []
+    
+    for col in df.columns:
+        # Only consider numeric columns
+        if not is_numeric_column(df[col]):
+            continue
+            
+        values = pd.to_numeric(df[col], errors='coerce')
+        
+        # Skip columns with too many NaN values
+        if values.isna().sum() > len(df) * 0.5:
+            continue
+            
+        non_na_values = values.dropna()
+        
+        if len(non_na_values) == 0:
+            continue
+            
+        # Check if values are consistent (same values appear frequently)
+        value_counts = non_na_values.value_counts()
+        most_common_count = value_counts.iloc[0] if len(value_counts) > 0 else 0
+        
+        # If the most common value appears in at least 70% of rows, likely a VAT rate
+        consistency_ratio = most_common_count / len(non_na_values)
+        
+        # VAT rates are typically between 0 and 30 percent
+        typical_vat_range = ((non_na_values >= 0) & (non_na_values <= 30)).mean()
+        
+        # Common VAT rates in many countries
+        common_vat_values = [19, 20, 21, 7, 5, 10, 17, 18, 22, 23, 25]
+        common_vat_decimal = [0.19, 0.20, 0.21, 0.07, 0.05, 0.10, 0.17, 0.18, 0.22, 0.23, 0.25]
+        
+        # Check if values match common VAT rates (either percentage or decimal format)
+        matches_common_vat = False
+        for val in non_na_values.unique():
+            if val in common_vat_values or val in common_vat_decimal:
+                matches_common_vat = True
+                break
+        
+        # Calculate score
+        score = (consistency_ratio * 3) + (typical_vat_range * 2) + (matches_common_vat * 3)
+        
+        vat_candidates.append((col, score))
+    
+    # Sort by score in descending order
+    vat_candidates.sort(key=lambda x: x[1], reverse=True)
+    
+    # Return the highest scoring column if above threshold
+    if vat_candidates and vat_candidates[0][1] >= 4:
+        return vat_candidates[0][0]
+    
+    return None
+
 def detect_price(df):
     """
     Detect the column containing price information.
@@ -268,6 +351,67 @@ def detect_price(df):
     Returns:
         str: name of the column containing price
     """
+    # First, check if there's a VAT rate column
+    vat_column = detect_vat_rate_column(df)
+    
+    # If VAT column found, look for related price columns
+    if vat_column is not None:
+        # Get the index of the VAT column
+        cols = list(df.columns)
+        vat_col_idx = cols.index(vat_column)
+        
+        # Check columns to the left and right of the VAT column
+        adjacent_cols = []
+        
+        # Check up to 3 columns to the left and right
+        check_range = 3
+        
+        for offset in range(-check_range, check_range + 1):
+            if offset == 0:  # Skip the VAT column itself
+                continue
+                
+            idx = vat_col_idx + offset
+            if 0 <= idx < len(cols):
+                col = cols[idx]
+                
+                # Only consider numeric columns
+                if is_numeric_column(df[col]):
+                    # Calculate average value
+                    values = pd.to_numeric(df[col], errors='coerce')
+                    non_na_values = values.dropna()
+                    
+                    if len(non_na_values) > 0:
+                        avg_value = non_na_values.mean()
+                        
+                        # Net prices are typically positive and larger than VAT rates
+                        # but smaller than total amounts
+                        # Price columns typically have larger values than VAT rate columns
+                        vat_values = pd.to_numeric(df[vat_column], errors='coerce').dropna()
+                        avg_vat = vat_values.mean() if len(vat_values) > 0 else 0
+                        
+                        # If VAT is in percentage format (like 19, 20), convert to decimal
+                        if avg_vat > 0 and avg_vat <= 30:
+                            avg_vat = avg_vat / 100
+                            
+                        # Check if column could be a price column related to the VAT
+                        is_positive = avg_value > 0
+                        is_larger_than_vat = avg_value > avg_vat
+                        is_reasonable_price = 0.1 <= avg_value <= 10000  # Reasonable price range
+                        
+                        score = (is_positive * 1) + (is_larger_than_vat * 2) + (is_reasonable_price * 1)
+                        # Columns closer to VAT column get a proximity bonus
+                        proximity_bonus = 0.5 * (check_range - abs(offset)) / check_range
+                        
+                        adjacent_cols.append((col, score + proximity_bonus))
+        
+        # Sort by score in descending order
+        adjacent_cols.sort(key=lambda x: x[1], reverse=True)
+        
+        # Return the highest scoring adjacent column if above threshold
+        if adjacent_cols and adjacent_cols[0][1] >= 2:
+            return adjacent_cols[0][0]
+    
+    # If no VAT column or no suitable adjacent column found, use the original method
     # Check column names first
     price_patterns = [
         re.compile(r'price', re.IGNORECASE),
@@ -276,7 +420,8 @@ def detect_price(df):
         re.compile(r'sum', re.IGNORECASE),
         re.compile(r'cost', re.IGNORECASE),
         re.compile(r'fee', re.IGNORECASE),
-        re.compile(r'value', re.IGNORECASE)
+        re.compile(r'value', re.IGNORECASE),
+        re.compile(r'net', re.IGNORECASE)  # Added 'net' as it often indicates net price
     ]
     
     # Check column names
@@ -291,6 +436,10 @@ def detect_price(df):
     numeric_cols = []
     
     for col in df.columns:
+        # Skip the VAT column if found earlier
+        if vat_column and col == vat_column:
+            continue
+            
         # Check if column has numeric values
         if is_numeric_column(df[col]):
             # Calculate statistics to identify price column

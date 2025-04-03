@@ -14,12 +14,12 @@ st.set_page_config(
 # Application title and description
 st.title("Invoice File Combiner")
 st.markdown("""
-This application helps you combine multiple CSV invoice files with different column structures 
+This application helps you combine multiple CSV and Excel invoice files with different column structures 
 into a single standardized output file. It automatically detects the relevant columns:
 - EVSE ID (Electric Vehicle Supply Equipment identifier)
 - Session ID (the unique transaction identifier for charging sessions)
 - Currency
-- Price
+- Price (net price, distinguishing it from VAT rates)
 """)
 
 # File uploader for multiple CSV and Excel files
@@ -116,8 +116,9 @@ st.markdown("""
    - EVSE ID (charging station identifier)
    - Session ID (transaction identifier)
    - Currency
-   - Price
-3. Header rows are automatically detected and skipped
-4. Data is combined into a single standardized output
-5. Download the combined file
+   - Price (net price, intelligently distinguished from VAT rates)
+3. Smart price detection analyzes VAT rate columns to find the correct price column
+4. Header rows are automatically detected and skipped
+5. Data is combined into a single standardized output
+6. Download the combined file
 """)
