@@ -383,22 +383,58 @@ def detect_price(df):
                     if len(non_na_values) > 0:
                         avg_value = non_na_values.mean()
                         
-                        # Net prices are typically positive and larger than VAT rates
-                        # but smaller than total amounts
-                        # Price columns typically have larger values than VAT rate columns
+                        # Net prices are typically positive and should have smaller values
+                        # than total amounts but larger than just the VAT amount
                         vat_values = pd.to_numeric(df[vat_column], errors='coerce').dropna()
                         avg_vat = vat_values.mean() if len(vat_values) > 0 else 0
                         
-                        # If VAT is in percentage format (like 19, 20), convert to decimal
-                        if avg_vat > 0 and avg_vat <= 30:
-                            avg_vat = avg_vat / 100
-                            
+                        # Store all numeric columns for comparison
+                        all_numeric_cols = {}
+                        for c in cols:
+                            if c != vat_column and is_numeric_column(df[c]):
+                                vals = pd.to_numeric(df[c], errors='coerce').dropna()
+                                if len(vals) > 0:
+                                    all_numeric_cols[c] = vals.mean()
+                        
+                        # If VAT is in percentage format (like 19, 20), we're looking for the column
+                        # with smaller values (net price) compared to another nearby column (total price)
+                        # But still larger than zero
+                        is_vat_percentage = avg_vat > 0 and avg_vat <= 30
+                        
                         # Check if column could be a price column related to the VAT
                         is_positive = avg_value > 0
-                        is_larger_than_vat = avg_value > avg_vat
                         is_reasonable_price = 0.1 <= avg_value <= 10000  # Reasonable price range
                         
-                        score = (is_positive * 1) + (is_larger_than_vat * 2) + (is_reasonable_price * 1)
+                        # For each column, check if it looks like a net price
+                        is_net_price = False
+                        
+                        if is_vat_percentage:
+                            # When VAT is a percentage (e.g., 19%), look for columns with smaller values
+                            # that could be net prices
+                            for c, avg_c_value in all_numeric_cols.items():
+                                # Skip self-comparison
+                                if c == col:
+                                    continue
+                                    
+                                # Check if other column has larger values (could be total price)
+                                # and is nearby in the dataframe (within 2 columns)
+                                c_idx = cols.index(c)
+                                is_nearby = abs(c_idx - idx) <= 2
+                                
+                                if is_nearby and avg_value < avg_c_value and avg_value > 0:
+                                    is_net_price = True
+                                    break
+                        else:
+                            # When VAT is not a percentage, look for values that could be reasonable prices
+                            # and not too large compared to other columns
+                            is_not_largest = False
+                            for c, avg_c_value in all_numeric_cols.items():
+                                if c != col and avg_value < avg_c_value:
+                                    is_not_largest = True
+                                    break
+                            is_net_price = is_not_largest
+                        
+                        score = (is_positive * 1) + (is_net_price * 3) + (is_reasonable_price * 1)
                         # Columns closer to VAT column get a proximity bonus
                         proximity_bonus = 0.5 * (check_range - abs(offset)) / check_range
                         
