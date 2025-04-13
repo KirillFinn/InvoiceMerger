@@ -1,0 +1,5 @@
+Improve VAT rate detection in invoice processing by enhancing the algorithm to prioritize columns with consistently repeating values.
+
+Replit-Commit-Author: Agent
+Replit-Commit-Session-Id: 95c4a278-5b7f-4132-8384-bdee2b088c93
+Replit-Commit-Screenshot-Url: https://storage.googleapis.com/screenshot-production-us-central1/4b05f21b-b9be-4cb0-857c-e1ec1792677f/6b5f0c5c-3fd8-4f83-aea3-81146f789049.jpg

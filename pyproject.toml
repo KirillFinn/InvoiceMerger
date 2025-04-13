@@ -1,4 +1,8 @@
 [project]
+<<<<<<< HEAD
+=======
+name = "repl-nix-workspace"
+>>>>>>> 04c10027fcec47375c0817cf315c8f273490ece4
 version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.11"
