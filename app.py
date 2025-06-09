@@ -3,6 +3,11 @@ import pandas as pd
 import io
 import re
 from utils import detect_columns, standardize_dataframe, process_file
+from database import init_db, save_invoice_data, get_all_invoices, get_invoices_by_date_range, get_invoices_by_evse
+from datetime import datetime, timedelta
+
+# Initialize database
+init_db()
 
 # Set page configuration
 st.set_page_config(
@@ -39,6 +44,38 @@ if 'processed_files' not in st.session_state:
 if 'processing_errors' not in st.session_state:
     st.session_state.processing_errors = []
 
+# Add database query section
+st.sidebar.title("Database Queries")
+query_type = st.sidebar.selectbox(
+    "Select Query Type",
+    ["All Records", "Date Range", "EVSE ID"]
+)
+
+if query_type == "All Records":
+    if st.sidebar.button("Show All Records"):
+        df = get_all_invoices()
+        st.sidebar.dataframe(df)
+        
+elif query_type == "Date Range":
+    col1, col2 = st.sidebar.columns(2)
+    with col1:
+        start_date = st.date_input("Start Date", datetime.now() - timedelta(days=30))
+    with col2:
+        end_date = st.date_input("End Date", datetime.now())
+    
+    if st.sidebar.button("Query by Date"):
+        df = get_invoices_by_date_range(start_date, end_date)
+        st.sidebar.dataframe(df)
+        
+elif query_type == "EVSE ID":
+    evse_id = st.sidebar.text_input("Enter EVSE ID")
+    if st.sidebar.button("Query by EVSE"):
+        if evse_id:
+            df = get_invoices_by_evse(evse_id)
+            st.sidebar.dataframe(df)
+        else:
+            st.sidebar.warning("Please enter an EVSE ID")
+
 # Process files when uploaded
 if uploaded_files:
     # Reset processing state when new files are uploaded
@@ -61,6 +98,9 @@ if uploaded_files:
                 
                 # Process the file content
                 processed_df = process_file(file_content, file.name)
+                
+                # Save to database
+                save_invoice_data(processed_df, file.name)
                 
                 # Append to combined data
                 if st.session_state.combined_data is None or st.session_state.combined_data.empty:

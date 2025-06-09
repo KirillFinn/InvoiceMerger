@@ -1,3 +1,7 @@
+# Database
+*.db
+*.sqlite3
+
 # Python
 __pycache__/
 *.py[cod]
@@ -24,18 +28,28 @@ wheels/
 # Virtual Environment
 venv/
 ENV/
+.env
 
-# IDE
+# IDE specific files
 .idea/
 .vscode/
 *.swp
 *.swo
+.DS_Store
+
+# Logs
+*.log
+
+# Local development settings
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
 # Streamlit
 .streamlit/
 
 # System files
-.DS_Store
 Thumbs.db
 
 # Project specific
