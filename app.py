@@ -16,6 +16,10 @@ st.set_page_config(
     layout="centered"
 )
 
+# Set server configuration
+st.set_option('server.port', 8501)
+st.set_option('server.address', 'localhost')
+
 # Application title and description
 st.title("Invoice File Combiner")
 st.markdown("""
