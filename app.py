@@ -1,26 +1,18 @@
 import streamlit as st
 import pandas as pd
-import io
-import re
-from utils import detect_columns, standardize_dataframe, process_file
-from database import init_db, save_invoice_data, get_all_invoices, get_invoices_by_date_range, get_invoices_by_evse
+from database import init_db, get_all_invoices, save_invoice_data
 from datetime import datetime, timedelta
+from utils import process_file
 
 # Initialize database
 init_db()
 
-# Set page configuration
 st.set_page_config(
     page_title="Invoice Combiner",
     page_icon="📊",
     layout="centered"
 )
 
-# Set server configuration
-st.set_option('server.port', 8501)
-st.set_option('server.address', 'localhost')
-
-# Application title and description
 st.title("Invoice File Combiner")
 st.markdown("""
 This application helps you combine multiple CSV and Excel invoice files with different column structures 
@@ -50,39 +42,15 @@ if 'processing_errors' not in st.session_state:
 
 # Add database query section
 st.sidebar.title("Database Queries")
-query_type = st.sidebar.selectbox(
-    "Select Query Type",
-    ["All Records", "Date Range", "EVSE ID"]
-)
-
-if query_type == "All Records":
-    if st.sidebar.button("Show All Records"):
+if st.sidebar.button("Show All Records"):
+    try:
         df = get_all_invoices()
         st.sidebar.dataframe(df)
-        
-elif query_type == "Date Range":
-    col1, col2 = st.sidebar.columns(2)
-    with col1:
-        start_date = st.date_input("Start Date", datetime.now() - timedelta(days=30))
-    with col2:
-        end_date = st.date_input("End Date", datetime.now())
-    
-    if st.sidebar.button("Query by Date"):
-        df = get_invoices_by_date_range(start_date, end_date)
-        st.sidebar.dataframe(df)
-        
-elif query_type == "EVSE ID":
-    evse_id = st.sidebar.text_input("Enter EVSE ID")
-    if st.sidebar.button("Query by EVSE"):
-        if evse_id:
-            df = get_invoices_by_evse(evse_id)
-            st.sidebar.dataframe(df)
-        else:
-            st.sidebar.warning("Please enter an EVSE ID")
+    except Exception as e:
+        st.sidebar.error(f"Error accessing database: {str(e)}")
 
 # Process files when uploaded
 if uploaded_files:
-    # Reset processing state when new files are uploaded
     if st.button("Process Files"):
         st.session_state.combined_data = pd.DataFrame()
         st.session_state.processed_files = 0
@@ -150,19 +118,3 @@ if uploaded_files:
 
 else:
     st.info("Please upload one or more invoice files (CSV, XLSX, or XLS) to begin.")
-
-# Add some helpful information at the bottom
-st.markdown("---")
-st.markdown("""
-### How it works
-1. Upload multiple invoice files (CSV, XLSX, or XLS formats)
-2. The application automatically detects columns for:
-   - EVSE ID (charging station identifier)
-   - Session ID (transaction identifier)
-   - Currency
-   - Price (net price, intelligently distinguished from VAT rates)
-3. Smart price detection analyzes VAT rate columns to find the correct price column
-4. Header rows are automatically detected and skipped
-5. Data is combined into a single standardized output
-6. Download the combined file
-""")
