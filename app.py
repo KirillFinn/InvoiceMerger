@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import sqlite3 # Added for specific exception handling
 from database import init_db, get_all_invoices, save_invoice_data
 from datetime import datetime, timedelta
 from utils import process_file
@@ -72,18 +73,34 @@ if uploaded_files:
                 processed_df = process_file(file_content, file.name)
                 
                 # Save to database
-                save_invoice_data(processed_df, file.name)
+                inserted_count, skipped_count = save_invoice_data(processed_df, file.name)
                 
-                # Append to combined data
+                # Append to combined data (shows what was attempted from the file)
                 if st.session_state.combined_data is None or st.session_state.combined_data.empty:
                     st.session_state.combined_data = processed_df
                 else:
                     st.session_state.combined_data = pd.concat([st.session_state.combined_data, processed_df], ignore_index=True)
                 
-                st.session_state.processed_files += 1
+                if inserted_count > 0:
+                    st.session_state.processed_files += 1
                 
-            except Exception as e:
-                st.session_state.processing_errors.append(f"Error processing {file.name}: {str(e)}")
+                if skipped_count > 0:
+                    # Using st.session_state.processing_errors for warnings as well, or create a new list
+                    st.session_state.processing_errors.append(
+                        (f"File '{file.name}': {skipped_count} records were skipped due to being duplicates. "
+                         f"{inserted_count} new records were added.", "warning")
+                    )
+                elif inserted_count == 0 and not processed_df.empty: # No new records added, but file wasn't empty (implies all were duplicates)
+                    st.session_state.processing_errors.append(
+                        (f"File '{file.name}': All records were found to be duplicates. No new records added.", "info")
+                    )
+
+            except sqlite3.Error as db_err: # Catch other potential DB errors not caught in save_invoice_data's loop
+                st.session_state.processing_errors.append((f"Database error processing {file.name}: {str(db_err)}", "error"))
+            except ValueError as val_err: # Errors from utils.process_file (e.g. empty file, columns not found)
+                 st.session_state.processing_errors.append((f"Validation error processing {file.name}: {str(val_err)}", "error"))
+            except Exception as e: # Other unexpected errors
+                st.session_state.processing_errors.append((f"Unexpected error processing {file.name}: {str(e)}", "error"))
             
             # Update progress
             progress_bar.progress((i + 1) / len(uploaded_files))
@@ -112,9 +129,17 @@ if uploaded_files:
     
     # Display errors if any
     if st.session_state.processing_errors:
-        st.subheader("Processing Errors")
-        for error in st.session_state.processing_errors:
-            st.error(error)
+        st.subheader("Processing Notifications")
+        for msg, level in st.session_state.processing_errors:
+            if level == "error":
+                st.error(msg)
+            elif level == "warning":
+                st.warning(msg)
+            elif level == "info":
+                st.info(msg)
+            else: # Default to info
+                st.info(msg)
+
 
 else:
     st.info("Please upload one or more invoice files (CSV, XLSX, or XLS) to begin.")
